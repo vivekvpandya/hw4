@@ -7,23 +7,52 @@ import java.util.*;
 import joeq.Compiler.Quad.Operand.*;
 
 public class FindRedundantNullChecks {
-public class DataflowObject {
+public static class DataflowObject {
+	private Set<String> set;
+	public static Set<String> universalSet;
         void setToTop() {
-
+		set = new TreeSet<String>();
         }
         void setToBottom() {
-
+		set = new TreeSet<String>(universalSet);
         }
         void meetWith (DataflowObject o) {
+	set.retainAll(o.set);
 
         }
         void copy (DataflowObject o) {
-
+		set = new TreeSet<String>(o.set);
         }
+
+	public boolean contains(String v) {
+		return set.contains(v);
+	}
 
         public DataflowObject() {
-
+		set = new TreeSet<String>();
         }
+
+	@Override
+	public boolean equals(Object o)
+	{
+		if (o instanceof DataflowObject) {
+			DataflowObject a = (DataflowObject) o;
+			return set.equals(a.set);
+		}
+		return false;
+	}
+	@Override
+	public int hashCode() {
+		return set.hashCode();
+	}
+
+	@Override
+	public String toString() {
+		return set.toString();
+	}
+
+	public void genVar(String v) {set.add(v);}
+	public void killVar(String v) {set.remove(v);}
         /* Also, freshly constructed objects should be Top, equals
          * must be looser than object identity, and toString should
          * return things in a form that's repeatable across runs.  Use
@@ -31,16 +60,78 @@ public class DataflowObject {
          */
     }
 
-    public class Analysis {
-
+    public static class Analysis {
+	private DataflowObject[] in, out;
+	private DataflowObject entry, exit;
         /* Analysis-specific customization.  You can use these to
          * precompute values or output results, if you wish. */
 
         void preprocess (ControlFlowGraph cfg) {
+		
+        System.out.println("Method: "+cfg.getMethod().getName().toString());
+        /* Generate initial conditions. */
+        QuadIterator qit = new QuadIterator(cfg);
+        int max = 0;
+        while (qit.hasNext()) {
+            int x = qit.next().getID();
+            if (x > max) max = x;
+        }
+        max += 1;
+        in = new DataflowObject[max];
+        out = new DataflowObject[max];
+        qit = new QuadIterator(cfg);
 
+        Set<String> s = new TreeSet<String>();
+        DataflowObject.universalSet = s;
+
+        /* Not sure if  Arguments are always there. */
+        //int numargs = cfg.getMethod().getParamTypes().length;
+        //for (int i = 0; i < numargs; i++) {
+        //    s.add("R"+i);
+        // }
+
+        while (qit.hasNext()) {
+            Quad q = qit.next();
+            for (RegisterOperand def : q.getDefinedRegisters()) {
+                s.add(def.getRegister().toString());
+            }
+            for (RegisterOperand use : q.getUsedRegisters()) {
+                s.add(use.getRegister().toString());
+            }
+        }
+
+        entry = new DataflowObject();
+        exit = new DataflowObject();
+        for (int i=0; i<in.length; i++) {
+            in[i] = new DataflowObject();
+            out[i] = new DataflowObject();
+        }
+	System.out.println("Initialization completed.");
         }
         void postprocess (ControlFlowGraph cfg) {
+	
+        System.out.println("entry: "+entry.toString());
+        for (int i=1; i<in.length; i++) {
+            System.out.println(i+" in:  "+in[i].toString());
+            System.out.println(i+" out: "+out[i].toString());
+        }
+		
+	System.out.println("Method: "+cfg.getMethod().getName().toString());	
+	QuadIterator qit = new QuadIterator(cfg);
+	while (qit.hasNext()) {
+		Quad q = qit.next();
+		int x = q.getID();
+		if (q.getOperator() instanceof Operator.NullCheck) {
+		System.out.println(q);
+		for (RegisterOperand use: q.getUsedRegisters()) {
+			if (in[x].contains(use.getRegister().toString())) {
+				System.out.println("Redundant NULL_CHECK :"+x);
+				break;
+			}
 
+		}
+		}
+	}
         }
 
         /* Is this a forward dataflow analysis? */
@@ -53,59 +144,85 @@ public class DataflowObject {
         /**
          * Returns the entry value
          **/
-        DataflowObject getEntry() { return DataflowObject();}
+        DataflowObject getEntry() {
+		
+		DataflowObject o = new DataflowObject();
+		o.copy(entry);
+		return o;
+	}
         /**
          * Returns the exit value
          **/
-        DataflowObject getExit() { return DataflowObject();}
+        DataflowObject getExit() { 
+		
+		DataflowObject o = new DataflowObject();
+		o.copy(exit);
+		return o;
+	}		
+        /**
         /**
          * Sets the entry value
          **/
         void setEntry(DataflowObject value) {
-
+	entry.copy(value);		
         }
         /**
          * Sets the exit value
          **/
         void setExit(DataflowObject value) {
-
+	exit.copy(value);
         }
         /**
          * Returns the IN value of a quad
          **/
-        DataflowObject getIn(Quad q) {return DataflowObject();}
+        DataflowObject getIn(Quad q) {
+	DataflowObject r = new DataflowObject();
+	r.copy(in[q.getID()]);
+	return r;
+	}
         /**
          * Returns the OUT value of a quad
          **/	
-        DataflowObject getOut(Quad q) { return DataflowObject();}
+        DataflowObject getOut(Quad q) {
+		DataflowObject r = new DataflowObject();
+		r.copy(out[q.getID()]);
+		return r;
+	}
         /**
          * Sets the IN value of a quad
          **/
         void setIn(Quad q, DataflowObject value) {
-
+		in[q.getID()].copy(value);
         }
         /**
          * Sets the OUT value of a quad
          **/
         void setOut(Quad q, DataflowObject value) {
-
+		out[q.getID()].copy(value);
         }
 
         /**
          * Returns a new DataflowObject of the same type
          **/
-        DataflowObject newTempVar() {return DataflowObject();}
+        DataflowObject newTempVar() {return new DataflowObject();}
 
         /**
          * Actually performs the transfer operation on the given
          * quad.
          **/
         void processQuad(Quad q) {
-
+		DataflowObject d = new DataflowObject();
+		d.copy(in[q.getID()]);
+		if (q.getOperator() instanceof Operator.NullCheck) {
+		for (RegisterOperand use: q.getUsedRegisters()) {
+			d.genVar(use.getRegister().toString());
+		}
+		}
+		out[q.getID()].copy(d);
         }
     }
 
-    public class Solver implements ControlFlowGraphVisitor {
+    public static class Solver implements ControlFlowGraphVisitor {
         protected Analysis analysis;
         private boolean containsEntryOrExit(Iterator<Quad> quads)
         {
@@ -216,7 +333,7 @@ public class DataflowObject {
         analysis.postprocess(cfg);
         }
         void registerAnalysis(Analysis a) {
-            this.analysis = analyzer;
+            this.analysis = a;
         }
     }
 
@@ -226,9 +343,11 @@ public class DataflowObject {
      * for each function as described on the course webpage
      */
     public static void main(String[] args) {
-        Solver solver;
-        Analysis analysis;
+        Solver solver =  new Solver();
+        Analysis analysis = new Analysis();
 
+	for (int i =0; i < args.length; ++i)
+		System.out.println(args[i]);
           // get the classes we will be visiting.
         jq_Class[] classes = new jq_Class[args.length];
         for (int i=0; i < classes.length; i++)
@@ -239,7 +358,7 @@ public class DataflowObject {
 
         // visit each of the specified classes with the solver.
         for (int i=0; i < classes.length; i++) {
-            System.out.println("Now analyzing " + classes[i].getName());
+	    System.out.println("Now analyzing " + classes[i].getName());
             Helper.runPass(classes[i], solver);
         }
     }
