@@ -1,0 +1,1 @@
+java -cp /home/vpandya/Downloads/hw4/lib/parun.jar:/home/vpandya/Downloads/hw4/lib/joeq.jar $@
