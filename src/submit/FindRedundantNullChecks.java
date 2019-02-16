@@ -68,7 +68,7 @@ public static class DataflowObject {
 
         void preprocess (ControlFlowGraph cfg) {
 		
-        System.out.println("Method: "+cfg.getMethod().getName().toString());
+  //      System.out.println("Method: "+cfg.getMethod().getName().toString());
         /* Generate initial conditions. */
         QuadIterator qit = new QuadIterator(cfg);
         int max = 0;
@@ -85,10 +85,10 @@ public static class DataflowObject {
         DataflowObject.universalSet = s;
 
         /* Not sure if  Arguments are always there. */
-        //int numargs = cfg.getMethod().getParamTypes().length;
-        //for (int i = 0; i < numargs; i++) {
-        //    s.add("R"+i);
-        // }
+        int numargs = cfg.getMethod().getParamTypes().length;
+        for (int i = 0; i < numargs; i++) {
+            s.add("R"+i);
+        }
 
         while (qit.hasNext()) {
             Quad q = qit.next();
@@ -105,34 +105,50 @@ public static class DataflowObject {
         for (int i=0; i<in.length; i++) {
             in[i] = new DataflowObject();
             out[i] = new DataflowObject();
+	    out[i].setToBottom();
         }
-	System.out.println("Initialization completed.");
+//	System.out.println("Initialization completed.");
         }
         void postprocess (ControlFlowGraph cfg) {
 	
-        System.out.println("entry: "+entry.toString());
+        /*System.out.println("entry: "+entry.toString());
         for (int i=1; i<in.length; i++) {
             System.out.println(i+" in:  "+in[i].toString());
             System.out.println(i+" out: "+out[i].toString());
-        }
+        }*/
 		
-	System.out.println("Method: "+cfg.getMethod().getName().toString());	
-	QuadIterator qit = new QuadIterator(cfg);
+	System.out.print(cfg.getMethod().getName().toString());	
+	QuadIterator qit = new QuadIterator(cfg, true);
+	TreeSet<Integer> tSet = new TreeSet<Integer>();
 	while (qit.hasNext()) {
 		Quad q = qit.next();
 		int x = q.getID();
 		if (q.getOperator() instanceof Operator.NullCheck) {
-		System.out.println(q);
+		//System.out.println(q);
+		//System.out.println("Preds: ");
+		//Iterator<Quad> pred =  qit.predecessors();
+		//while (pred.hasNext()) {
+		//	System.out.println("\t" + pred.next().toString());
+		//}
 		for (RegisterOperand use: q.getUsedRegisters()) {
 			if (in[x].contains(use.getRegister().toString())) {
-				System.out.println("Redundant NULL_CHECK :"+x);
+				tSet.add(x);
 				break;
 			}
 
 		}
 		}
 	}
-        }
+        Iterator<Integer> itr =  tSet.iterator();
+	if (itr.hasNext())
+		System.out.print(' ');
+	while (itr.hasNext()) {
+		System.out.print(itr.next());
+		if (itr.hasNext())
+			System.out.print(' ');
+	}
+	System.out.print('\n');
+	}
 
         /* Is this a forward dataflow analysis? */
         boolean isForward () { return true;}
@@ -204,7 +220,11 @@ public static class DataflowObject {
         /**
          * Returns a new DataflowObject of the same type
          **/
-        DataflowObject newTempVar() {return new DataflowObject();}
+        DataflowObject newTempVar() {
+		DataflowObject d = new DataflowObject();
+		d.setToBottom();
+		return d;
+	}
 
         /**
          * Actually performs the transfer operation on the given
@@ -213,6 +233,9 @@ public static class DataflowObject {
         void processQuad(Quad q) {
 		DataflowObject d = new DataflowObject();
 		d.copy(in[q.getID()]);
+		for (RegisterOperand def : q.getDefinedRegisters()) {
+			d.killVar(def.getRegister().toString());
+		}
 		if (q.getOperator() instanceof Operator.NullCheck) {
 		for (RegisterOperand use: q.getUsedRegisters()) {
 			d.genVar(use.getRegister().toString());
@@ -244,6 +267,7 @@ public static class DataflowObject {
             while(quads.hasNext())
             {
                 Quad P = (Quad)quads.next();
+		//System.out.println("\t"+P);
                 if(P!=null)
                 {
                     if(direction)
@@ -295,6 +319,8 @@ public static class DataflowObject {
                 while(iter.hasNext()) // Iterate forward
                 {
                     Quad quad = (Quad)iter.next();
+		    //System.out.println(quad);
+		    //System.out.println("Preds: ");
                     Iterator<Quad> pre = iter.predecessors();
                     analysis.setIn(quad, computeConfluence(pre, true) );
                     if(transfer(quad, true))
@@ -346,8 +372,8 @@ public static class DataflowObject {
         Solver solver =  new Solver();
         Analysis analysis = new Analysis();
 
-	for (int i =0; i < args.length; ++i)
-		System.out.println(args[i]);
+	//for (int i =0; i < args.length; ++i)
+		//System.out.println(args[i]);
           // get the classes we will be visiting.
         jq_Class[] classes = new jq_Class[args.length];
         for (int i=0; i < classes.length; i++)
@@ -358,7 +384,7 @@ public static class DataflowObject {
 
         // visit each of the specified classes with the solver.
         for (int i=0; i < classes.length; i++) {
-	    System.out.println("Now analyzing " + classes[i].getName());
+	    //System.out.println("Now analyzing " + classes[i].getName());
             Helper.runPass(classes[i], solver);
         }
     }
