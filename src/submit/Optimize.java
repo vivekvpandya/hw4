@@ -8,7 +8,80 @@ import joeq.Compiler.Quad.Operand.*;
 
 public class Optimize {
     
-public static class DataflowObject {
+        public static interface DataflowObject {
+        void setToTop();
+        void setToBottom();
+        void meetWith (DataflowObject o);
+        void copy (DataflowObject o);
+
+        /* Also, freshly constructed objects should be Top, equals
+         * must be looser than object identity, and toString should
+         * return things in a form that's repeatable across runs.  Use
+         * SortedSets and SortedMaps instead of the normal kinds.
+         */
+    }
+
+    public static interface Analysis {
+
+        /* Analysis-specific customization.  You can use these to
+         * precompute values or output results, if you wish. */
+
+        void preprocess (ControlFlowGraph cfg);
+        void postprocess (ControlFlowGraph cfg);
+
+        /* Is this a forward dataflow analysis? */
+        boolean isForward ();
+
+        /* Routines for interacting with dataflow values.  You may
+         * assume that the quad passed in is part of the relevant
+         * CFG. */
+
+        /**
+         * Returns the entry value
+         **/
+        DataflowObject getEntry();
+        /**
+         * Returns the exit value
+         **/
+        DataflowObject getExit();
+        /**
+         * Sets the entry value
+         **/
+        void setEntry(DataflowObject value);
+        /**
+         * Sets the exit value
+         **/
+        void setExit(DataflowObject value);	
+        /**
+         * Returns the IN value of a quad
+         **/
+        DataflowObject getIn(Quad q);
+        /**
+         * Returns the OUT value of a quad
+         **/	
+        DataflowObject getOut(Quad q);
+        /**
+         * Sets the IN value of a quad
+         **/
+        void setIn(Quad q, DataflowObject value);
+        /**
+         * Sets the OUT value of a quad
+         **/
+        void setOut(Quad q, DataflowObject value);
+
+        /**
+         * Returns a new DataflowObject of the same type
+         **/
+        DataflowObject newTempVar();
+
+        /**
+         * Actually performs the transfer operation on the given
+         * quad.
+         **/
+        void processQuad(Quad q);
+    }
+
+public static class NullCheckObject implements DataflowObject {
 	private Set<String> set;
 	public static Set<String> universalSet;
         void setToTop() {
@@ -18,26 +91,27 @@ public static class DataflowObject {
 		set = new TreeSet<String>(universalSet);
         }
         void meetWith (DataflowObject o) {
-	set.retainAll(o.set);
-
+            NullCheckObject a = (NullCheckObject)o;
+	        set.retainAll(a.set);
         }
         void copy (DataflowObject o) {
-		set = new TreeSet<String>(o.set);
+            NullCheckObject a = (NullCheckObject)o;
+		set = new TreeSet<String>(a.set);
         }
 
 	public boolean contains(String v) {
 		return set.contains(v);
 	}
 
-        public DataflowObject() {
+        public NullCheckObject() {
 		set = new TreeSet<String>();
         }
 
 	@Override
 	public boolean equals(Object o)
 	{
-		if (o instanceof DataflowObject) {
-			DataflowObject a = (DataflowObject) o;
+		if (o instanceof NullCheckObject) {
+			NullCheckObject a = (NullCheckObject) o;
 			return set.equals(a.set);
 		}
 		return false;
@@ -61,9 +135,9 @@ public static class DataflowObject {
          */
     }
 
-    public static class Analysis {
-	private DataflowObject[] in, out;
-	private DataflowObject entry, exit;
+    public static class NullCheckOpt implements Analysis {
+	private NullCheckObject[] in, out;
+	private NullCheckObject entry, exit;
         /* Analysis-specific customization.  You can use these to
          * precompute values or output results, if you wish. */
 
@@ -78,12 +152,12 @@ public static class DataflowObject {
             if (x > max) max = x;
         }
         max += 1;
-        in = new DataflowObject[max];
-        out = new DataflowObject[max];
+        in = new NullCheckObject[max];
+        out = new NullCheckObject[max];
         qit = new QuadIterator(cfg);
 
         Set<String> s = new TreeSet<String>();
-        DataflowObject.universalSet = s;
+        NullCheckObject.universalSet = s;
 
         /* Not sure if  Arguments are always there. */
         int numargs = cfg.getMethod().getParamTypes().length;
@@ -101,12 +175,12 @@ public static class DataflowObject {
             }
         }
 
-        entry = new DataflowObject();
-        exit = new DataflowObject();
+        entry = new NullCheckObject();
+        exit = new NullCheckObject();
         for (int i=0; i<in.length; i++) {
-            in[i] = new DataflowObject();
-            out[i] = new DataflowObject();
-	    out[i].setToBottom();
+            in[i] = new NullCheckObject();
+            out[i] = new NullCheckObject();
+	        out[i].setToBottom();
         }
 //	System.out.println("Initialization completed.");
         }
@@ -164,7 +238,7 @@ public static class DataflowObject {
          **/
         DataflowObject getEntry() {
 		
-		DataflowObject o = new DataflowObject();
+		NullCheckObject o = new NullCheckObject();
 		o.copy(entry);
 		return o;
 	}
@@ -173,7 +247,7 @@ public static class DataflowObject {
          **/
         DataflowObject getExit() { 
 		
-		DataflowObject o = new DataflowObject();
+		NullCheckObject o = new NullCheckObject();
 		o.copy(exit);
 		return o;
 	}		
@@ -194,7 +268,7 @@ public static class DataflowObject {
          * Returns the IN value of a quad
          **/
         DataflowObject getIn(Quad q) {
-	DataflowObject r = new DataflowObject();
+	NullCheckObject r = new NullCheckObject();
 	r.copy(in[q.getID()]);
 	return r;
 	}
@@ -202,7 +276,7 @@ public static class DataflowObject {
          * Returns the OUT value of a quad
          **/	
         DataflowObject getOut(Quad q) {
-		DataflowObject r = new DataflowObject();
+		NullCheckObject r = new NullCheckObject();
 		r.copy(out[q.getID()]);
 		return r;
 	}
@@ -223,7 +297,7 @@ public static class DataflowObject {
          * Returns a new DataflowObject of the same type
          **/
         DataflowObject newTempVar() {
-		DataflowObject d = new DataflowObject();
+		NullCheckObject d = new NullCheckObject();
 		d.setToBottom();
 		return d;
 	}
@@ -233,7 +307,7 @@ public static class DataflowObject {
          * quad.
          **/
         void processQuad(Quad q) {
-		DataflowObject d = new DataflowObject();
+		NullCheckObject d = new NullCheckObject();
 		d.copy(in[q.getID()]);
 		for (RegisterOperand def : q.getDefinedRegisters()) {
 			d.killVar(def.getRegister().toString());
@@ -372,7 +446,7 @@ public static class DataflowObject {
      */
     public static void optimize(List<String> optimizeFiles, boolean nullCheckOnly) {
 	Solver solver = new Solver();
-	Analysis analysis = new Analysis();
+	Analysis analysis = new NullCheckOpt();
 	solver.registerAnalysis(analysis);
 	for (int i = 0; i < optimizeFiles.size(); i++) {
             jq_Class classes = (jq_Class)Helper.load(optimizeFiles.get(i));
